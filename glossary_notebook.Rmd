@@ -1,0 +1,612 @@
+---
+title: "Discourse-Oriented German Climate Change Glossary - R Notebook"
+output:
+  html_notebook: default
+  pdf_document: default
+editor_options:
+  chunk_output_type: inline
+---
+### Prerequisites
+To open and use this notebook file you need to install the following:
+```{r}
+#install.packages("quanteda")
+#install.packages("readtext")
+#install.packages("wordcloud")
+#install.packages("RColorBrewer")
+#install.packages("wordcloud2")
+#install.packages("tidyverse")
+#install.packages("tm")
+#install.packages("quanteda.textmodels")
+#install.packages("quanteda.textstats")
+#install.packages("quanteda.textplots")
+```
+
+### Load required libraries
+```{r}
+# load libraries
+library(quanteda)
+library(readtext)
+library(wordcloud)
+library(RColorBrewer)
+library(wordcloud2)
+library(tidyverse)
+library(tm)
+library("textcat")
+library("quanteda.textplots")
+library("quanteda.textstats")
+library("gsubfn")
+library("spacyr")
+
+spacy_initialize(model = "de_core_news_sm")
+```
+
+## 1. Web Scraping with Trafilatura
+This step is necessary to get the text data from the websites. In a first step, a list of links of all the subpages of a website is being created. Next, this list of links is processed and the text data is being retrieved and saved in .txt files. This was done in the terminal, not in R. 
+
+```{r eval=FALSE, include=FALSE}
+# run link discovery through website and store the resulting links in a file
+$ trafilatura --sitemap "https://www.klimareporter.de" --list > klimareporterlinks.txt
+
+# to process list of links and get texts
+$ trafilatura -i klimareporterlinks.txt -o klimareporter_texts
+```
+
+## 2. Corpus Creation
+Hint: All final corpora can be found within the folder "corpora". You can skip the following steps of the corpus creation and directly start with "3. Corpus Statistics" to run the notebook since the corpus creation takes some time. 
+
+To open the previously created text files, we need to run the following code:
+```{r}
+# you can get the current directory for importing the text files by setting current directory and open relative path from there with the following line:
+
+#setwd("/Users/Anna/Documents/uni/climate_change_glossary")
+
+# load climate change activists texts
+fff_de_texts <- readtext("text_files/pro/fff_de_texts/*")
+ikem_texts <- readtext("text_files/pro/ikem_texts/*")
+klimarep_texts <- readtext("text_files/pro/klimareporter_texts/*")
+klimafakten_texts <- readtext("text_files/pro/klimafakten_texts/*")
+zero_texts <- readtext("text_files/pro/germanzero_texts/*")
+komma_texts <- readtext("text_files/pro/komma_texts/*")
+
+# load climate change sceptics texts
+eike_texts <- readtext("text_files/contra/eike_texts/*")
+```
+
+### Building a Corpus
+```{r}
+# build corpus for each text with "origin" tag
+# specify language for each text to get rid of non-German texts 
+
+# activists
+fff_de_corpus <- corpus(fff_de_texts)
+docvars(fff_de_corpus, "origin") <- "fff_de"
+docvars(fff_de_corpus, "language") <- textcat(fff_de_corpus)
+fff_de_corpus <- corpus_subset(fff_de_corpus, language == "german", drop_docid = TRUE)
+
+ikem_corpus <- corpus(ikem_texts)
+docvars(ikem_corpus, "origin") <- "ikem"
+docvars(ikem_corpus, "language") <- textcat(ikem_corpus)
+ikem_corpus <- corpus_subset(ikem_corpus, language == "german", drop_docid = TRUE)
+
+klimarep_corpus <- corpus(klimarep_texts)
+docvars(klimarep_corpus, "origin") <- "kr"
+docvars(klimarep_corpus, "language") <- textcat(klimarep_corpus)
+klimarep_corpus <- corpus_subset(klimarep_corpus, language == "german", drop_docid = TRUE)
+
+klimafakten_corpus <- corpus(klimafakten_texts)
+docvars(klimafakten_corpus, "origin") <- "kf"
+docvars(klimafakten_corpus, "language") <- textcat(klimafakten_corpus)
+klimafakten_corpus <- corpus_subset(klimafakten_corpus, language == "german", drop_docid = TRUE)
+
+zero_corpus <- corpus(zero_texts)
+docvars(zero_corpus, "origin") <- "zero"
+docvars(zero_corpus, "language") <- textcat(zero_corpus)
+zero_corpus <- corpus_subset(zero_corpus, language == "german", drop_docid = TRUE)
+
+komma_corpus <- corpus(komma_texts)
+docvars(komma_corpus, "origin") <- "gk"
+docvars(komma_corpus, "language") <- textcat(komma_corpus)
+komma_corpus <- corpus_subset(komma_corpus, language == "german", drop_docid = TRUE)
+
+# sceptics
+eike_corpus <- corpus(eike_texts)
+docvars(eike_corpus, "origin") <- "eike"
+docvars(eike_corpus, "language") <- textcat(eike_corpus)
+eike_corpus <- corpus_subset(eike_corpus, language == "german", drop_docid = TRUE)
+
+# build a PRO corpus for all activists texts 
+# create a "group" tag with value "activists"
+pro_corpus <- fff_de_corpus+ikem_corpus+klimarep_corpus+klimafakten_corpus+zero_corpus+komma_corpus
+docvars(pro_corpus, "group") <- "activists"
+
+# build a CONTRA corpus for all sceptics texts 
+# create a "group" tag with value "sceptics"
+contra_corpus <- eike_corpus
+docvars(contra_corpus, "group") <- "sceptics"
+```
+
+### Create Subcorpora (2000 texts each)
+```{r}
+# get random sample corpus for activists
+pro2000 <- corpus_sample(pro_corpus, size = 2000)
+
+# get random sample corpus for sceptics
+contra2000 <- corpus_sample(contra_corpus, size = 2000)
+
+# create "full" (combined) corpus with pro and contra sample 
+full_corpus <- pro2000+contra2000
+
+# get id number for corpus
+docvars(pro2000, "id") <- paste(1:ndoc(pro2000))
+docvars(contra2000, "id") <- paste(1:ndoc(contra2000))
+```
+
+### Save corpus files in .rds format
+```{r}
+# save corpus files as .rds file for later use
+saveRDS(full_corpus, "corpora/full_corpus.rds")
+
+saveRDS(pro_corpus, "corpora/pro_corpus.rds")
+saveRDS(contra_corpus, "corpora/contra_corpus.rds")
+
+saveRDS(pro2000, "corpora/pro2000.rds")
+saveRDS(contra2000, "corpora/contra2000.rds")
+
+# activists
+saveRDS(fff_de_corpus, "corpora/fff_de_corpus.rds")
+saveRDS(ikem_corpus, "corpora/ikem_corpus.rds")
+saveRDS(klimarep_corpus, "corpora/klimarep_corpus.rds")
+saveRDS(klimafakten_corpus, "corpora/klimafakten_corpus.rds")
+saveRDS(zero_corpus, "corpora/zero_corpus.rds")
+saveRDS(komma_corpus, "corpora/komma_corpus.rds")
+
+# sceptics
+saveRDS(eike_corpus, "corpora/eike_corpus.rds")
+```
+
+## 3. Corpus Statistics
+
+### Load existing corpus files
+```{r}
+# load corpus files 
+full_corpus = readRDS("corpora/full_corpus.rds")
+
+pro_corpus = readRDS("corpora/pro_corpus.rds")
+contra_corpus = readRDS("corpora/contra_corpus.rds")
+
+pro2000 = readRDS("corpora/pro2000.rds")
+contra2000 = readRDS("corpora/contra2000.rds")
+
+# optional: load 
+fff_de_corpus = readRDS("corpora/fff_de_corpus.rds")
+ikem_corpus = readRDS("corpora/ikem_corpus.rds")
+klimarep_corpus = readRDS("corpora/klimarep_corpus.rds")
+klimafakten_corpus = readRDS("corpora/klimafakten_corpus.rds")
+zero_corpus = readRDS("corpora/zero_corpus.rds")
+komma_corpus = readRDS("corpora/komma_corpus.rds")
+eike_corpus = readRDS("corpora/eike_corpus.rds")
+```
+
+### Exploring the corpus
+First, we want to have a look at the information each of the sample corpora gives us:  
+- types  
+- tokens  
+- number of sentences  
+- origin  
+- language  
+- group  
+- id   
+
+```{r}
+# retrieve overview of corpus information for activists corpus
+summary(pro2000, n = 10)
+
+# retrieve overview of corpus information for sceptics corpus
+summary(contra2000, n=10)
+```
+### Plotting Number of Sentences
+The overview of the corpus information reveals that the sceptics corpus may consist of much longer texts (see "Sentences" counts) than the activists corpus. We want to re-check this information by plotting the sentence counts for a subset of the data. 
+```{r}
+# retrieve corpus information (sample of 50 entries)
+contra2000_sum <- summary(contra2000, n=50)
+pro2000_sum <- summary(pro2000, n=50)
+
+# create plots from corpus information
+ggplot(pro2000_sum, aes(id, Sentences, group=1)) +
+  geom_line() + 
+  geom_point() +
+  theme(axis.text.x = element_text(angle=0, vjust=1, hjust=1)) + 
+  ggtitle("Sentences Pro2000")
+
+ggplot(contra2000_sum, aes(id, Sentences, group=1)) +
+  geom_line() + 
+  geom_point() +
+  theme(axis.text.x = element_text(angle=0, vjust=1, hjust=1)) + 
+  ggtitle("Sentences Contra2000")
+
+```
+Now we can caluculate the mean count of the sentences by running the following code:
+```{r}
+# get mean of sentences count for activitst
+sents_pro = summary(pro2000, n=ndoc(pro2000))$Sentences
+mean(sents_pro)
+
+# get mean of sentences count for sceptics
+sents_con = summary(contra2000, n=ndoc(contra2000))$Sentences
+mean(sents_con)
+```
+
+The results show, that the texts of the activists corpus consist of averagely 24,7 sentences, meanwhile the texts of the sceptics corpus have an average number of 76,3 sentences. This suggests that the texts of the sceptics corpus are much longer than the ones in the other corpus. 
+
+## 4. Empirical Work
+
+### Create a Document-Feature Matrix (dfm), load stop lists 
+```{r}
+# retrieve stoplists
+de_stopwords <- stopwords::stopwords("de", source="snowball")
+en_stopwords <- stopwords::stopwords("en", source="snowball" )
+
+# add custom stoplist
+custom_stopwords <- c("dass", "=", "the", "seit", "ab", "beim", "\n", "mal", "c", "\\|","|", "m", "kommentare", "neueste", "gepostet", "admin", "cookies", "inhalte", "inhalt", "newsletter", "posten", "zugriff", "passwort", "geschützt", "seite", "website", "webseite", "and", "0", "1", "2", "3","4","5","6","7","8","9", "mfg","w","t","wer","00", "30", ">", "anmelden", "\\+", "40", "81", "erneuerbarer",
+"OWLIT", "et", "\\´", "\\^", "tppubtype", "pubstate", "z", "b", "d", "ct")
+
+# combine lists to a full version
+full_stopwords <- c(de_stopwords,en_stopwords,custom_stopwords)
+
+# create dfm
+dfm_p2000 <- dfm(pro2000, remove=full_stopwords, remove_punct=TRUE, remove_numbers=TRUE, remove_symbols=TRUE, tolower=TRUE)
+dfm_c2000 <- dfm(contra2000, remove=full_stopwords, remove_punct=TRUE, remove_numbers=TRUE, remove_symbols=TRUE, tolower=TRUE)
+```
+
+Let's have a look at the dfm of both corpora:
+```{r}
+# pro corpus dfm
+dfm_p2000
+```
+```{r}
+# contra corpus dfm
+dfm_c2000
+```
+The document-feature matrix basically consists of rows for each text and columns for each word (here called "feature") in the texts. The column values reflect how many times a term appears in a text - if a term does not occur in a text, its value is zero. 
+
+### 4.1 Corpus Cleaning
+To clean the corpora lemmatization and application of stop lists (see previous step) was performed. For the lemmatization, the spacyr library was used. 
+
+Info: This piece of code takes some time to run. 
+```{r}
+# parse the pro corpus with spacy function and retrieve lemma for each token
+sp_pro2000 <- spacy_parse(pro2000, pos=FALSE, entity=FALSE, dependency=FALSE)
+sp_pro2000$token <- sp_pro2000$lemma
+
+# create lemmatized version of dfm for activists corpus
+sp_dfm_p2000 <- as.tokens(sp_pro2000)%>%
+  dfm(remove=full_stopwords, remove_punct=TRUE, remove_numbers=TRUE, remove_symbols=TRUE, tolower=TRUE)
+
+# parse the contra corpus with spacy function and retrieve lemma for each token
+sp_contra2000 <- spacy_parse(contra2000, pos=FALSE, entity=FALSE, dependency=FALSE)
+sp_contra2000$token <- sp_contra2000$lemma
+
+# create lemmatized version of dfm for sceptics corpus
+sp_dfm_c2000 <- as.tokens(sp_contra2000)%>%
+  dfm(remove=full_stopwords, remove_punct=TRUE, remove_numbers=TRUE, remove_symbols=TRUE, tolower=TRUE)
+
+# parse the full corpus with spacy function and retrieve lemma for each token
+sp_full <- spacy_parse(full_corpus, pos=FALSE, entity=FALSE, dependency=FALSE)
+sp_full$token <- sp_full$lemma
+
+# create lemmatized version of dfm for sceptics corpus
+sp_dfm_full <- as.tokens(sp_full) %>%
+  dfm(remove=full_stopwords, remove_punct=TRUE, remove_numbers=TRUE, remove_symbols=TRUE, tolower=TRUE)
+```
+
+Comment: The German lemmatization with spacyr is not very accurate. A lot of compounds do not get lemmatized at all and therefore appear multiple times (in all possible forms) in the dfm. 
+
+### 4.2 Frequency Analysis
+#### Most frequent terms
+With the help of "topfeatures" we can check the most frequently occurring terms for each dfm.
+```{r}
+# check top 50 terms for activists corpus
+topfeatures(sp_dfm_p2000, n=50)
+```
+
+```{r}
+# check top 50 terms for sceptics corpus 
+topfeatures(sp_dfm_c2000, n=50)
+```
+Since those lists are not easy to handle, we will create a plot of the information in the following sections. 
+
+#### Plotting Frequencies
+To plot the most frequent words of each corpus, let's run the following code:
+```{r}
+# get frequencies of a sample of 50 words from the corpora
+freq_p2000 <- textstat_frequency(sp_dfm_p2000, n=50)
+freq_c2000 <- textstat_frequency(sp_dfm_c2000, n=50)
+
+# create plot for activists corpus word frequencies
+plot1 <- ggplot(freq_p2000, aes(x=feature, y=frequency)) + 
+  geom_point()+ggtitle("P2000 Frequencies")+
+  theme(axis.text.x = element_text(angle=90,hjust=1))
+plot1
+
+# create plot for sceptics corpus word frequencies
+plot2 <- ggplot(freq_c2000, aes(x=feature, y=frequency)) + 
+  geom_point()+ ggtitle("C2000 Frequencies")+
+  theme(axis.text.x = element_text(angle=90,hjust=1)) 
+plot2
+```
+This already gives us a first impression of the content of the corpora texts. 
+
+Nevertheless, we are particularly interested in the word frequencies of German climate change compound nouns. Accordingly, we start with the retrieval of terms starting with "klima" to hopefully get some climate change compounds. In the next step, again we retrieve the frequencies of the words and create plots for both corpora. 
+```{r}
+# create a sample of the dfm with all words starting with "klima..." 
+klima_p2000 <- dfm_select(sp_dfm_p2000, pattern="klima*")
+klima_c2000 <- dfm_select(sp_dfm_c2000, pattern="klima*")
+
+# retrieve frequencies for a sample of 50 words 
+freq_klima_p2000 <- textstat_frequency(klima_p2000, n=50)
+freq_klima_c2000 <- textstat_frequency(klima_c2000, n=50)
+
+# sort in descending manner
+freq_klima_p2000$feature <- with(freq_klima_p2000, reorder(feature, -frequency))
+freq_klima_c2000$feature <- with(freq_klima_c2000, reorder(feature, -frequency))
+
+# create plot for activists corpus "klima" word frequencies
+plot3 <- ggplot(freq_klima_p2000, aes(x=feature, y=frequency)) + 
+  geom_point()+ggtitle("P2000 'Klima' Word Frequencies")+
+  theme(axis.text.x = element_text(angle=90,hjust=1))
+plot3
+
+# create plot for scpetics corpus "klima" word frequencies
+plot4 <- ggplot(freq_klima_c2000, aes(x=feature, y=frequency)) + 
+  geom_point()+ ggtitle("C2000 'Klima' Word Frequencies")+
+  theme(axis.text.x = element_text(angle=90,hjust=1)) 
+plot4
+
+```
+In the following step we retrieve lists of the terms which only appear in one of the Top50 lists. 
+For activists group:
+```{r}
+# get list of climate change compounds only appearing in top50 for activists 
+setdiff(freq_klima_p2000$feature, freq_klima_c2000$feature)
+```
+For sceptics group:
+```{r}
+# get list of climate change compounds only appearing in top50 for activists 
+setdiff(freq_klima_c2000$feature, freq_klima_p2000$feature)
+```
+#### TF-IDF
+To get weighted frequencies of the corpora, it is necessary to have a look at the tf-idf (term frequency-inverse document freqeuncy) of the words. 
+
+```{r}
+# calculate tfidf for "klima" words
+p2000_tfidf <- dfm_tfidf(klima_p2000, scheme_tf = "prop", scheme_df = "inverse")
+c2000_tfidf <- dfm_tfidf(klima_c2000, scheme_tf = "prop", scheme_df = "inverse")
+
+# retrieve frequencies
+pro_freq_tfidf <- p2000_tfidf %>%
+  textstat_frequency(n=20, force=TRUE)
+
+con_freq_tfidf <- c2000_tfidf %>%
+  textstat_frequency(n=20, force=TRUE)
+
+# plot tfidf of activists corpus
+plot5 <- ggplot(data=pro_freq_tfidf, aes(x=factor(nrow(pro_freq_tfidf):1), y=frequency)) +
+  geom_point() +
+  ggtitle("P2000 'Klima' Words - Relative Frequencies")+
+  coord_flip() +
+  scale_x_discrete(breaks=factor(nrow(pro_freq_tfidf):1), labels=pro_freq_tfidf$feature) +
+  labs(x=NULL, y="tf-idf")
+plot5
+
+# plot tfidf of sceptics corpus
+plot6 <- ggplot(data=con_freq_tfidf,aes(x=factor(nrow(con_freq_tfidf):1), y=frequency)) +
+  geom_point() +
+  ggtitle("C2000 'Klima' Words - Relative Frequencies")+
+  coord_flip() +
+  scale_x_discrete(breaks=factor(nrow(con_freq_tfidf):1), labels=con_freq_tfidf$feature) + 
+  labs(x=NULL, y="tf-idf")
+plot6
+```
+#### Comparison of Groups/Origin
+Additionally, let's have a look at the climate change terms for each website we created our corpora from. All except from EIKE are used to construct the activists corpus. 
+```{r}
+# create a weighted dfm for the full corpus to get data for each website
+dfm_weight_origin <- full_corpus %>%
+  tokens(remove_punct = TRUE) %>%
+  tokens_remove(full_stopwords) %>%
+  dfm() %>%
+  dfm_weight(scheme = "prop")
+
+# retrieve all words starting with "klima..."
+dfm_klima <- dfm_select(dfm_weight_origin, pattern ="klima*")
+
+# retrieve frequencies
+freq_weight <- textstat_frequency(dfm_klima, n=10, groups=dfm_weight_origin$origin)
+
+# plot relative frequencies of all websites
+plot7 <- ggplot(data = freq_weight, aes(x = nrow(freq_weight):1, y = frequency)) +
+     geom_point() +
+     facet_wrap(~ group, scales = "free") +
+     coord_flip() +
+     scale_x_continuous(breaks = nrow(freq_weight):1,
+                        labels = freq_weight$feature) +
+     labs(x = NULL, y = "Relative frequency")
+plot7
+```
+The following plot provides a lot of information about the usage of terms between both groups - activists and sceptics. 
+```{r}
+# retrieve frequencies for "klima" words
+freqs_pro <- textstat_frequency(p2000_tfidf, force=TRUE)
+freqs_con <- textstat_frequency(c2000_tfidf, force=TRUE)
+
+#plot comparison of both groups
+freqs.act <- filter(freqs_pro) %>% as.data.frame() %>% select(feature, frequency)
+freqs.scept <- filter(freqs_con) %>% as.data.frame() %>% select(feature, frequency)
+freqs <- left_join(freqs.act, freqs.scept, by = "feature") %>% head(30) %>% arrange(frequency.x) %>% mutate(feature = factor(feature, feature))
+plot8 <- ggplot(freqs) +
+    geom_segment(aes(x=feature, xend=feature, y=frequency.x, yend=frequency.y), color="grey") +
+    geom_point(aes(x=feature, y=frequency.x, colour="Activists"), size = 3) +
+    geom_point(aes(x=feature, y=frequency.y, colour="Sceptics"), size = 3) +
+    ggtitle("Comparison 'Klima' TF-IDF Scores per Group") + 
+    xlab("") + ylab("TF-IDF") +
+    coord_flip()
+
+plot8+labs(colour="Group")
+
+#ggsave("comparison_klima_freqs.png", dpi=300, dev='png', height=6, width=12, units="in")
+```
+#### Keyness
+```{r}
+# Create a dfm grouped by community
+group_dfm <- tokens(full_corpus, remove_punct = TRUE) %>%
+  tokens_remove(full_stopwords) %>%
+  tokens_group(groups = group) %>%
+  dfm()
+
+# retrieve "klima" words for grouped dfm
+group_dfm_klima <- dfm_select(group_dfm, pattern ="klima*")
+
+# Calculate keyness and determine activists as target group
+result_keyness <- textstat_keyness(corp_dfm_klima, target = "activists")
+
+# Plot estimated word keyness
+textplot_keyness(result_keyness, margin=0.2, n=15, color=c("lightblue", "red"), show_legend=TRUE) 
+```
+### 4.3 Context Analysis
+#### Collocations
+```{r}
+# Preprocessing of the corpora to remove stopwords and special characters, etc. 
+pro2000_tokens <- pro2000 %>% 
+  tokens(remove_punct = TRUE, remove_numbers = TRUE, remove_symbols = TRUE, remove_url = TRUE, 
+         remove_separators = TRUE) %>% 
+  tokens_tolower() %>% 
+  tokens_remove(pattern = full_stopwords, padding = T)
+
+contra2000_tokens <- contra2000 %>%
+  tokens(remove_punct = TRUE, remove_numbers = TRUE, remove_symbols = TRUE, remove_url = TRUE, 
+         remove_separators = TRUE) %>% 
+  tokens_tolower() %>% 
+  tokens_remove(pattern = full_stopwords, padding = T)
+
+# calculate collocation via textstat
+p_coll <- textstat_collocations(pro2000_tokens, min_count=10)
+c_coll <- textstat_collocations(contra2000_tokens, min_count=10)
+
+# get top 50 collocations for activists
+p2000_colls <- head(arrange(p_coll, desc(count)), n=50)
+
+# get top50 collocations for sceptics
+c2000_colls <- head(arrange(c_coll, desc(count)), n=50)
+
+p2000_colls
+c2000_colls
+```
+```{r}
+# plot collocations of activists corpus
+p2000_colls$collocation <- with(p2000_colls, reorder(collocation, -count))
+plot9 <- ggplot(p2000_colls, aes(x=collocation, y=count)) + 
+  geom_point()+ggtitle("P2000 Collocation Frequencies")+
+  theme(axis.text.x = element_text(angle=90,hjust=1))
+plot9 
+
+# plot collocations of sceptics corpus
+c2000_colls$collocation <- with(c2000_colls, reorder(collocation, -count))
+plot10 <- ggplot(c2000_colls, aes(x=collocation, y=count)) + 
+  geom_point()+ggtitle("C2000 Collocation Frequencies")+
+  theme(axis.text.x = element_text(angle=90,hjust=1))
+plot10
+
+#ggsave(plot=plot9, width = 10, height = 5, dpi=300, filename="p2000_colls.png")
+#ggsave(plot=plot10, width = 10, height = 5, dpi=300, filename="c2000_colls.png")
+```
+#### Keyword in Context
+In the following we will output the context of some example words by using the "Keywords-in-Context" (KWIC) feature of Quanteda. 
+#### KWIC: "Klimaschutz" Activists Group
+```{r}
+# apply keyword-in-context function for given word
+kwic_pro <- kwic(pro2000, pattern="klimaschutz", window=5) %>%
+  as_tibble()
+
+# output top20 kwic results
+head(kwic_pro, n=20)
+
+#write.csv(kwic_pro, "kwic_pro_klimaschutz.csv")
+```
+#### KWIC: "Klimaschutz" Sceptics Group
+```{r}
+# apply keyword-in-context function for given word
+kwic_con <- kwic(contra2000, pattern="klimaschutz", window=5) %>%
+  as_tibble()
+
+# output top20 kwic results
+head(kwic_con, n=20)
+```
+#### KWIC: "Klimakrise" Activists Group
+```{r}
+# apply keyword-in-context function for given word
+kwic_pro <- kwic(pro2000, pattern="klimakrise", window=5) %>%
+  as_tibble()
+
+# output top20 kwic results
+head(kwic_pro, n=20)
+
+# write.csv(head(kwic_pro, n=20), "kwic_pro_klimakrise.csv")
+```
+#### KWIC: "Klimakrise" Sceptics Group
+```{r}
+# apply keyword-in-context function for given word
+kwic_con <- kwic(contra2000, pattern="klimakrise", window=5) %>%
+  as_tibble()
+
+# output top20 kwic results
+head(kwic_con, n=20)
+```
+#### KWIC: "Klimahysterie" Scpetics Group
+```{r}
+# apply keyword-in-context function for given word
+kwic_con <- kwic(contra2000, pattern="klimahysterie", window=5) %>%
+  as_tibble()
+
+# output top20 kwic results
+head(kwic_con, n=20)
+
+# write.csv(head(kwic_con, n=20), "kwic_con_klimahysterie.csv")
+```
+
+### Glossary Enrichment
+Export lists of "Klima" words from both groups for later use in glossary and glossary enrichment. 
+```{r}
+# set max print option to make sure all results are saved to final list
+options(max.print=10000)
+
+# retrieve all "Klima" words from both corpora
+pro_klima_list <- list(textstat_frequency(dfm_select(sp_pro2000_dfm, pattern = "klima*"))$feature)
+con_klima_list <- list(textstat_frequency(dfm_select(sp_con2000_dfm, pattern = "klima*"))$feature)
+
+# create combined list
+shared <- Map(c, pro_klima_list, con_klima_list) 
+
+# to save lists of "Klima" words 
+# w/o "$feature" it saves the whole table as text file (with frequency info etc.)
+capture.output(pro_klima_list, file = "terms_pro.txt")
+capture.output(con_klima_list, file = "terms_contra.txt")
+capture.output(shared, file = "terms_shared.txt")
+```
+
+The activists list contains 826 terms.
+```{r}
+lengths(pro_klima_list)
+```
+The sceptics list contains 2141 terms.
+```{r}
+lengths(con_klima_list)
+```
+The combined list contains 2967 terms.
+```{r}
+lengths(shared)
+```
+
+
+
+
+
